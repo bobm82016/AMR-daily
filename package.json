@@ -1,6 +1,6 @@
 {
   "name": "amr-daily-stats",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "AMR daily stats desktop app for runtime and mileage",
   "author": "Autoxing",
   "private": true,
