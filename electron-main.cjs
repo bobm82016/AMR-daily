@@ -188,7 +188,13 @@ function getUpdateFeedConfig() {
       // ignore invalid optional config
     }
   }
-  return null;
+  return {
+    provider: "github",
+    owner: "bobm82016",
+    repo: "AMR-daily",
+    private: false,
+    token: process.env.GH_TOKEN || process.env.GITHUB_TOKEN || undefined
+  };
 }
 
 function sendUpdateStatus(message) {
