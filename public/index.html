@@ -34,14 +34,13 @@
       <div class="panel-shell">
         <nav class="tabs" aria-label="主要功能">
           <button class="tab active" data-tab="stats" type="button" aria-current="page">統計查詢</button>
-          <button class="tab" data-tab="schedule" type="button">新增排程</button>
+          <button class="tab" data-tab="schedule" type="button">排程</button>
           <button class="tab" data-tab="line-id" type="button">LINE ID 偵測</button>
           <button class="tab" data-tab="settings" type="button">設定</button>
           <button class="tab" data-tab="logs" type="button">Log</button>
         </nav>
 
       <section class="panel tab-panel active" id="tab-stats">
-        <div class="panel-title">統計查詢</div>
         <form id="stats-form" autocomplete="off" class="form-grid">
           <label class="field full">
             <span>機器人 ID</span>
@@ -90,7 +89,6 @@
       </section>
 
       <section class="panel tab-panel" id="tab-settings">
-        <div class="panel-title">設定</div>
         <div class="settings-section">
           <h2>API 設定</h2>
           <div class="form-grid">
@@ -189,11 +187,6 @@
       </section>
 
       <section class="panel tab-panel" id="tab-schedule">
-        <div class="panel-title">新增排程</div>
-        <div class="settings-section">
-          <h2>排程清單</h2>
-          <div class="schedule-list" id="scheduleRulesList"></div>
-        </div>
         <div class="settings-section">
           <h2>設定時間</h2>
           <div class="form-grid">
@@ -230,11 +223,14 @@
         <div class="actions">
           <button type="button" id="addScheduleRuleBtn">新增到排程清單</button>
         </div>
+        <div class="settings-section">
+          <h2>排程清單</h2>
+          <div class="schedule-list" id="scheduleRulesList"></div>
+        </div>
         <p class="hint">每一筆排程都要指定 LINE 目標 ID；LINE Channel ID/secret 仍使用「設定」頁的資料。跳過國定假日會透過政府開放資料查詢政府行政機關辦公日曆表。</p>
       </section>
 
       <section class="panel tab-panel" id="tab-line-id">
-        <div class="panel-title">LINE ID 偵測</div>
         <div class="form-grid">
           <label class="field full">
             <span>LINE Webhook URL</span>
@@ -250,7 +246,6 @@
       </section>
 
       <section class="panel tab-panel" id="tab-logs">
-        <div class="panel-title">Log</div>
         <div class="form-grid">
           <label class="field full">
             <span>TXT 儲存資料夾</span>
