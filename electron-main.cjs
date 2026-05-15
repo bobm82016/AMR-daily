@@ -111,8 +111,8 @@ function setupAutoUpdater() {
   try {
     updaterModule = require("electron-updater");
     const { autoUpdater } = updaterModule;
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.autoDownload = false;
+    autoUpdater.autoInstallOnAppQuit = false;
     autoUpdater.setFeedURL(feedConfig);
     autoUpdater.logger = {
       info: (message) => sendUpdateStatus(String(message || "")),
@@ -121,9 +121,25 @@ function setupAutoUpdater() {
     };
 
     autoUpdater.on("checking-for-update", () => sendUpdateStatus("正在檢查軟體更新..."));
-    autoUpdater.on("update-available", (info) => {
+    autoUpdater.on("update-available", async (info) => {
       updateLatestVersion(info?.version);
-      sendUpdateStatus(`發現新版 ${info.version || ""}，開始下載...`);
+      sendUpdateStatus(`發現新版 ${info.version || ""}。`);
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow();
+      const result = await dialog.showMessageBox(owner || undefined, {
+        type: "question",
+        buttons: ["下載更新", "稍後"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "AMR統計 更新",
+        message: `發現新版 ${info.version || ""}。是否要現在下載？`,
+        detail: `目前版本：${app.getVersion()}`
+      });
+      if (result.response === 0) {
+        sendUpdateStatus(`開始下載新版 ${info.version || ""}...`);
+        autoUpdater.downloadUpdate().catch((err) => sendUpdateStatus(formatUpdateError(err)));
+      } else {
+        sendUpdateStatus(`已略過新版 ${info.version || ""}，可稍後再檢查更新。`);
+      }
     });
     autoUpdater.on("update-not-available", (info) => {
       updateLatestVersion(info?.version || app.getVersion());
