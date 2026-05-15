@@ -32,13 +32,14 @@
 
       <section class="notice global-notice" id="notice" aria-live="polite"></section>
 
-      <nav class="tabs" aria-label="主要功能">
-        <button class="tab active" data-tab="stats" type="button" aria-current="page">統計查詢</button>
-        <button class="tab" data-tab="settings" type="button">設定</button>
-        <button class="tab" data-tab="schedule" type="button">新增排程</button>
-        <button class="tab" data-tab="line-id" type="button">LINE ID 偵測</button>
-        <button class="tab" data-tab="logs" type="button">Log</button>
-      </nav>
+      <div class="panel-shell">
+        <nav class="tabs" aria-label="主要功能">
+          <button class="tab active" data-tab="stats" type="button" aria-current="page">統計查詢</button>
+          <button class="tab" data-tab="settings" type="button">設定</button>
+          <button class="tab" data-tab="schedule" type="button">新增排程</button>
+          <button class="tab" data-tab="line-id" type="button">LINE ID 偵測</button>
+          <button class="tab" data-tab="logs" type="button">Log</button>
+        </nav>
 
       <section class="panel tab-panel active" id="tab-stats">
         <div class="panel-title">統計查詢</div>
@@ -262,6 +263,7 @@
         </div>
         <pre class="log-view" id="logView"></pre>
       </section>
+      </div>
     </main>
 
     <div class="modal-backdrop" id="scheduleEditModal" hidden>
