@@ -16,6 +16,9 @@
             <span>目前版本 <strong id="currentVersion">--</strong></span>
             <span>最新版本 <strong id="latestVersion">檢查中</strong></span>
           </div>
+          <div class="hero-update-action">
+            <button type="button" id="checkUpdateBtn" class="ghost compact-action">檢查更新</button>
+          </div>
         </div>
         <div class="hero-status">
           <p class="subtext">輸入機器人 ID 後，查詢指定日期的運行時間、里程與任務數。</p>
@@ -183,13 +186,6 @@
         </div>
         <p class="hint">LINE 使用 Channel ID/secret 自動取得 access token；不需要另外填 Channel access token。</p>
 
-        <div class="settings-section">
-          <h2>軟體更新</h2>
-          <div class="actions">
-            <button type="button" id="checkUpdateBtn" class="ghost">檢查更新</button>
-          </div>
-          <p class="hint">OTA 更新來源已內建 GitHub：bobm82016/AMR-daily，也可用 GITHUB_OWNER / GITHUB_REPO 或 exe 同層 update-config.json 覆蓋。</p>
-        </div>
       </section>
 
       <section class="panel tab-panel" id="tab-schedule">
