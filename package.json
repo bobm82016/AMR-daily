@@ -31,8 +31,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "YOUR_GITHUB_OWNER",
-        "repo": "YOUR_GITHUB_REPO",
+        "owner": "bobm82016",
+        "repo": "AMR-daily",
         "releaseType": "release"
       }
     ],
