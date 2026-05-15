@@ -898,7 +898,12 @@ function initTabs() {
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
       const target = tab.dataset.tab;
-      tabs.forEach((btn) => btn.classList.toggle("active", btn === tab));
+      tabs.forEach((btn) => {
+        const isActive = btn === tab;
+        btn.classList.toggle("active", isActive);
+        if (isActive) btn.setAttribute("aria-current", "page");
+        else btn.removeAttribute("aria-current");
+      });
       panels.forEach((panel) => panel.classList.toggle("active", panel.id === `tab-${target}`));
     });
   });
