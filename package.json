@@ -1,0 +1,64 @@
+{
+  "name": "amr-daily-stats",
+  "version": "1.0.1",
+  "description": "AMR daily stats desktop app for runtime and mileage",
+  "author": "Autoxing",
+  "private": true,
+  "type": "module",
+  "main": "electron-main.cjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "electron": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@autoxing/robot-js-sdk": "^1.0.135",
+    "axios": "^1.6.8",
+    "electron-updater": "^6.8.3",
+    "websocket": "^1.0.35"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.autoxing.amrstats",
+    "productName": "AMR統計",
+    "directories": {
+      "output": "dist"
+    },
+    "artifactName": "${name}-setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR_GITHUB_OWNER",
+        "repo": "YOUR_GITHUB_REPO",
+        "releaseType": "release"
+      }
+    ],
+    "files": [
+      "electron-main.cjs",
+      "electron-main.mjs",
+      "preload.cjs",
+      "server.mjs",
+      "public/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "dir"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "artifactName": "${name}-setup-${version}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}
