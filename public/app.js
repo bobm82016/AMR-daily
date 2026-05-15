@@ -26,6 +26,8 @@ const saveRuleBtn = document.getElementById("saveRuleBtn");
 const testLineBtn = document.getElementById("testLineBtn");
 const testEmailBtn = document.getElementById("testEmailBtn");
 const checkUpdateBtn = document.getElementById("checkUpdateBtn");
+const currentVersion = document.getElementById("currentVersion");
+const latestVersion = document.getElementById("latestVersion");
 const loadLineSourcesBtn = document.getElementById("loadLineSourcesBtn");
 const saveLineWebhookBtn = document.getElementById("saveLineWebhookBtn");
 const lineWebhookPath = document.getElementById("lineWebhookPath");
@@ -97,6 +99,7 @@ loadLogExportPath();
 loadHolidayCache();
 initQueryDate();
 initTabs();
+initVersionInfo();
 setScheduleStatus("off", "排程未開啟");
 addLog("程式啟動");
 
@@ -310,6 +313,7 @@ checkUpdateBtn?.addEventListener("click", async () => {
       notice.textContent = result.message;
       addLog(result.message, result.ok ? "INFO" : "WARN");
     }
+    if (result?.versionInfo) updateVersionInfo(result.versionInfo);
   } catch (err) {
     notice.textContent = `檢查更新失敗：${err.message}`;
     addLog(`檢查更新失敗：${err.message}`, "ERROR");
@@ -322,6 +326,10 @@ window.amrDesktop?.onUpdateStatus?.((message) => {
   if (!message) return;
   notice.textContent = message;
   addLog(message, message.includes("失敗") ? "ERROR" : "INFO");
+});
+
+window.amrDesktop?.onVersionInfo?.((info) => {
+  updateVersionInfo(info);
 });
 
 executeBtn.addEventListener("click", async (event) => {
@@ -867,6 +875,21 @@ function updateScheduleToggleButton() {
   executeBtn.textContent = scheduleEnabled ? "停用排程" : "啟用排程";
   executeBtn.classList.toggle("schedule-toggle-start", !scheduleEnabled);
   executeBtn.classList.toggle("schedule-toggle-stop", scheduleEnabled);
+}
+
+async function initVersionInfo() {
+  updateVersionInfo({});
+  if (!window.amrDesktop?.getVersionInfo) return;
+  try {
+    updateVersionInfo(await window.amrDesktop.getVersionInfo());
+  } catch {
+    updateVersionInfo({});
+  }
+}
+
+function updateVersionInfo(info = {}) {
+  if (currentVersion) currentVersion.textContent = info.currentVersion ? `v${info.currentVersion}` : "--";
+  if (latestVersion) latestVersion.textContent = info.latestVersion ? `v${info.latestVersion}` : "檢查中";
 }
 
 function initTabs() {
