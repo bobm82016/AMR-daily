@@ -78,11 +78,12 @@ const RULES_KEY = "amr_stats_rules_v6";
 const LINE_WEBHOOK_KEY = "amr_stats_line_webhook_url_v1";
 const LOG_KEY = "amr_stats_logs_v1";
 const LOG_PATH_KEY = "amr_stats_log_export_path_v1";
-const HOLIDAY_CACHE_KEY = "amr_stats_national_holidays_v1";
+const HOLIDAY_CACHE_KEY = "amr_stats_national_holidays_v2";
 const LEGACY_RULES_KEYS = ["amr_stats_rules_v5", "amr_stats_rules_v4", "amr_stats_rules_v3", "amr_stats_rules_v2", "amr_stats_rules_v1"];
 const EMPTY_VALUE = "尚未查詢";
 
 let nationalHolidayDates = new Set();
+let nationalWorkdayDates = new Set();
 let nationalHolidayYears = new Set();
 let nationalHolidayFetchedAt = "";
 
@@ -617,7 +618,7 @@ function getNextRun(ruleOrTime) {
   next.setHours(hours, minutes, 0, 0);
   if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
   if (rule.skipNationalHolidays) {
-    while (isNationalHoliday(next)) {
+    while (isNonWorkingDay(next)) {
       next.setDate(next.getDate() + 1);
       next.setHours(hours, minutes, 0, 0);
     }
@@ -625,8 +626,10 @@ function getNextRun(ruleOrTime) {
   return next;
 }
 
-function isNationalHoliday(date) {
-  return nationalHolidayDates.has(formatDate(date));
+function isNonWorkingDay(date) {
+  const dateText = formatDate(date);
+  if (nationalWorkdayDates.has(dateText)) return false;
+  return nationalHolidayDates.has(dateText) || date.getDay() === 0 || date.getDay() === 6;
 }
 
 async function ensureNationalHolidayData(rules) {
@@ -638,7 +641,10 @@ async function ensureNationalHolidayData(rules) {
   const response = await fetch(`/api/national-holidays?years=${missingYears.join(",")}`);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.error || "讀取政府國定假日失敗");
-  mergeHolidayData(Array.isArray(payload.holidays) ? payload.holidays : [], payload.fetchedAt || "");
+  mergeHolidayData({
+    holidays: Array.isArray(payload.holidays) ? payload.holidays : [],
+    workdays: Array.isArray(payload.workdays) ? payload.workdays : []
+  }, payload.fetchedAt || "");
   persistHolidayCache();
 
   const stillMissing = missingYears.filter((year) => !nationalHolidayYears.has(year));
@@ -658,11 +664,19 @@ function getRequiredHolidayYears(rules) {
   return [...years].sort((a, b) => a - b);
 }
 
-function mergeHolidayData(holidays, fetchedAt = "") {
+function mergeHolidayData(calendar, fetchedAt = "") {
+  const holidays = Array.isArray(calendar) ? calendar : Array.isArray(calendar?.holidays) ? calendar.holidays : [];
+  const workdays = Array.isArray(calendar?.workdays) ? calendar.workdays : [];
   for (const item of holidays) {
     const date = typeof item === "string" ? item : item?.date;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) continue;
     nationalHolidayDates.add(date);
+    nationalHolidayYears.add(Number(date.slice(0, 4)));
+  }
+  for (const item of workdays) {
+    const date = typeof item === "string" ? item : item?.date;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) continue;
+    nationalWorkdayDates.add(date);
     nationalHolidayYears.add(Number(date.slice(0, 4)));
   }
   if (fetchedAt) nationalHolidayFetchedAt = fetchedAt;
@@ -671,7 +685,8 @@ function mergeHolidayData(holidays, fetchedAt = "") {
 function persistHolidayCache() {
   localStorage.setItem(HOLIDAY_CACHE_KEY, JSON.stringify({
     fetchedAt: nationalHolidayFetchedAt,
-    holidays: [...nationalHolidayDates].sort().map((date) => ({ date }))
+    holidays: [...nationalHolidayDates].sort().map((date) => ({ date })),
+    workdays: [...nationalWorkdayDates].sort().map((date) => ({ date }))
   }));
 }
 
@@ -755,7 +770,8 @@ function loadHolidayCache() {
     if (!raw) return;
     const data = JSON.parse(raw);
     const holidays = Array.isArray(data.holidays) ? data.holidays : [];
-    mergeHolidayData(holidays, data.fetchedAt || "");
+    const workdays = Array.isArray(data.workdays) ? data.workdays : [];
+    mergeHolidayData({ holidays, workdays }, data.fetchedAt || "");
   } catch {
     localStorage.removeItem(HOLIDAY_CACHE_KEY);
   }
@@ -1286,7 +1302,7 @@ function renderScheduleRules(rules = getRules()) {
       <div class="schedule-meta">
         <span ${rule.showCallCount === false ? "hidden" : ""}>叫車門檻：${escapeHtml(rule.callThreshold)}</span>
         <span>${rule.showCallCount === false ? "輸出不顯示叫車次數" : "輸出顯示叫車次數"}</span>
-        <span>${rule.skipNationalHolidays ? "跳過國定假日" : "國定假日照常通知"}</span>
+        <span>${rule.skipNationalHolidays ? "跳過週末與國定假日" : "週末與國定假日照常通知"}</span>
       </div>
       <div class="schedule-row-actions">
         <button type="button" class="ghost" data-action="edit">編輯</button>

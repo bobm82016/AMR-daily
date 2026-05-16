@@ -209,14 +209,15 @@ const server = http.createServer(async (req, res) => {
         .map((year) => Number(year.trim()))
         .filter((year) => Number.isInteger(year) && year >= 2000 && year <= 2100);
       const calendar = await getGovernmentHolidayCalendar();
-      const selectedYears = years.length ? years : [...new Set(calendar.holidays.map((item) => Number(item.date.slice(0, 4))))];
+      const selectedYears = years.length ? years : calendar.years;
       const yearSet = new Set(selectedYears);
       return sendJson(res, 200, {
         ok: true,
         source: calendar.source,
         fetchedAt: calendar.fetchedAt,
         years: selectedYears,
-        holidays: calendar.holidays.filter((item) => yearSet.has(Number(item.date.slice(0, 4))))
+        holidays: calendar.holidays.filter((item) => yearSet.has(Number(item.date.slice(0, 4)))),
+        workdays: calendar.workdays.filter((item) => yearSet.has(Number(item.date.slice(0, 4))))
       });
     }
     if (req.method === "POST" && req.url === "/api/log/export") {
@@ -301,11 +302,19 @@ async function fetchGovernmentHolidayCalendar() {
     .filter((item) => item && item.isHoliday && !isWeekendOnlyHoliday(item))
     .map(({ isHoliday, ...item }) => item)
     .sort((a, b) => a.date.localeCompare(b.date));
+  const workdays = rows
+    .map(normalizeHolidayRow)
+    .filter((item) => item && !item.isHoliday && isWeekendDate(item.date))
+    .map(({ isHoliday, ...item }) => item)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const years = [...new Set([...holidays, ...workdays].map((item) => Number(item.date.slice(0, 4))))].sort((a, b) => a - b);
   if (!holidays.length) throw new Error("政府行事曆 API 未回傳假日資料");
   return {
     source: HOLIDAY_API_URL,
     fetchedAt: new Date().toISOString(),
-    holidays
+    years,
+    holidays,
+    workdays
   };
 }
 
@@ -336,6 +345,12 @@ function isHolidayValue(value) {
 
 function isWeekendOnlyHoliday(item) {
   return String(item.category || "").includes("星期六、星期日");
+}
+
+function isWeekendDate(dateText) {
+  const date = new Date(`${dateText}T00:00:00+08:00`);
+  const day = date.getDay();
+  return day === 0 || day === 6;
 }
 
 async function fetchWithTimeout(url, timeoutMs) {
