@@ -80,6 +80,7 @@ const LOG_KEY = "amr_stats_logs_v1";
 const LOG_PATH_KEY = "amr_stats_log_export_path_v1";
 const HOLIDAY_CACHE_KEY = "amr_stats_national_holidays_v2";
 const LEGACY_RULES_KEYS = ["amr_stats_rules_v5", "amr_stats_rules_v4", "amr_stats_rules_v3", "amr_stats_rules_v2", "amr_stats_rules_v1"];
+const SCHEDULE_SEND_DEDUP_WINDOW_MS = 5 * 60 * 1000;
 const EMPTY_VALUE = "尚未查詢";
 
 let nationalHolidayDates = new Set();
@@ -88,6 +89,7 @@ let nationalHolidayYears = new Set();
 let nationalHolidayFetchedAt = "";
 
 let scheduleTimers = new Map();
+let recentScheduleSends = new Map();
 let scheduleEnabled = false;
 let scheduleState = "off";
 let selectedScheduleId = "";
@@ -116,48 +118,6 @@ saveSettings.addEventListener("click", () => {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify({ appId, appSecret, appCode }));
   notice.textContent = "API 設定已儲存。";
   addLog("API 設定已儲存");
-});
-
-executeBtn.addEventListener("click", () => {
-  const rule = getRule();
-  if (!rule.robotId) {
-    notice.textContent = "請先在新增排程填入機器人 ID。";
-    setScheduleStatus("warning", "排程異常：缺少機器人 ID");
-    addLog("啟用排程失敗：缺少機器人 ID", "WARN");
-    return;
-  }
-  if (!rule.time) {
-    notice.textContent = "請先在新增排程選擇查詢時間。";
-    setScheduleStatus("warning", "排程異常：缺少查詢時間");
-    addLog("啟用排程失敗：缺少查詢時間", "WARN");
-    return;
-  }
-  if (!hasAnyNotificationTarget(rule)) {
-    notice.textContent = "請至少啟用並設定 LINE 或 Email 通知。";
-    setScheduleStatus("warning", "排程異常：缺少通知設定");
-    addLog("啟用排程失敗：缺少通知設定", "WARN");
-    return;
-  }
-
-  scheduleEnabled = true;
-  setScheduleStatus("ok", "排程已啟用");
-  addLog(`排程已啟用，機器人 ID：${rule.robotId}，查詢時間：${rule.time}`);
-  scheduleNextRun();
-});
-
-stopBtn?.addEventListener("click", () => {
-  stopSchedule();
-  notice.textContent = "排程已停用。";
-  setScheduleStatus("off", "排程未開啟");
-  addLog("排程已停用");
-});
-
-saveScheduleBtn?.addEventListener("click", () => {
-  saveRule("排程已儲存。");
-});
-
-saveRuleBtn.addEventListener("click", () => {
-  saveRule("通知設定已儲存。");
 });
 
 testLineBtn.addEventListener("click", async () => {
@@ -469,50 +429,17 @@ function renderStats(robotId, data) {
   timezoneLabel.textContent = `時區：${data.timezone || "未知"}`;
 }
 
-function legacyScheduleNextRun() {
-  if (scheduleTimer) {
-    clearTimeout(scheduleTimer);
-    scheduleTimer = null;
-  }
-
-  const rule = getRule();
-  const nextRun = getNextRun(rule);
-  if (!nextRun || !rule.robotId) {
-    notice.textContent = "排程資料不完整，請重新確認新增排程。";
-    setScheduleStatus("warning", "排程異常：資料不完整");
-    addLog("排程資料不完整，無法安排下次執行", "WARN");
-    return;
-  }
-
-  const delayMs = Math.max(0, nextRun.getTime() - Date.now());
-  scheduleTimer = setTimeout(async () => {
-    queryDateInput.value = formatDate(new Date());
-    const data = await queryStats(rule.robotId, "排程查詢");
-    if (data) {
-      const results = await sendScheduleNotifications(rule, data);
-      notice.textContent = formatNotificationResult(results);
-      setScheduleStatus(results.some((item) => !item.ok) ? "warning" : "ok", results.some((item) => !item.ok) ? "排程異常：通知失敗" : "排程正常");
-      addLog(notice.textContent, results.some((item) => !item.ok) ? "WARN" : "INFO");
-    }
-    if (scheduleEnabled) scheduleNextRun();
-  }, delayMs);
-
-  notice.textContent = `排程已啟用，下次執行：${formatDateTime(nextRun)}。`;
-  setScheduleStatus("ok", `排程正常：${formatDateTime(nextRun)}`);
-  addLog(`排程下次執行：${formatDateTime(nextRun)}`);
-}
-
 async function sendScheduleNotifications(rule, data) {
   const jobs = [];
   if (isLineReady(rule)) {
     jobs.push(sendScheduleLine(rule, data).then(
-      () => ({ channel: "LINE", ok: true }),
+      (result) => ({ channel: "LINE", ok: true, skipped: result?.skipped === true }),
       (err) => ({ channel: "LINE", ok: false, error: err.message })
     ));
   }
   if (isEmailReady(rule)) {
     jobs.push(sendScheduleEmail(rule, data).then(
-      () => ({ channel: "Email", ok: true }),
+      (result) => ({ channel: "Email", ok: true, skipped: result?.skipped === true }),
       (err) => ({ channel: "Email", ok: false, error: err.message })
     ));
   }
@@ -521,18 +448,65 @@ async function sendScheduleNotifications(rule, data) {
 
 function formatNotificationResult(results) {
   if (!results.length) return "排程查詢完成，但尚未啟用通知。";
-  const ok = results.filter((item) => item.ok).map((item) => item.channel);
+  const skipped = results.filter((item) => item.skipped).map((item) => item.channel);
+  const ok = results.filter((item) => item.ok && !item.skipped).map((item) => item.channel);
   const failed = results.filter((item) => !item.ok).map((item) => `${item.channel} 失敗：${item.error}`);
+  if (skipped.length && !ok.length && !failed.length) return `排程查詢完成，已略過重複的 ${skipped.join("、")} 通知。`;
   if (!failed.length) return `排程查詢完成，已寄出 ${ok.join("、")} 通知。`;
   if (!ok.length) return `排程查詢完成，但通知寄送失敗：${failed.join("；")}`;
   return `排程查詢完成，已寄出 ${ok.join("、")}；${failed.join("；")}`;
 }
 
 async function sendScheduleLine(rule, data) {
-  return sendLineMessage(rule, buildNotificationBody(data, rule));
+  const text = buildNotificationBody(data, rule);
+  const dedupeKey = getScheduleSendDedupKey("LINE", rule, data, text);
+  return sendScheduleMessageOnce("LINE", rule, data, text, () => sendLineMessage(rule, text, { dedupeKey }));
 }
 
-async function sendLineMessage(rule, text) {
+async function sendScheduleMessageOnce(channel, rule, data, text, send) {
+  const now = Date.now();
+  for (const [key, sentAt] of recentScheduleSends.entries()) {
+    if (now - sentAt > SCHEDULE_SEND_DEDUP_WINDOW_MS) recentScheduleSends.delete(key);
+  }
+
+  const key = getScheduleSendDedupKey(channel, rule, data, text);
+  const sentAt = recentScheduleSends.get(key);
+  if (sentAt && now - sentAt <= SCHEDULE_SEND_DEDUP_WINDOW_MS) {
+    addLog(`Skipped duplicate ${channel} schedule notification for ${data.robotId || rule.robotId || ""}.`, "WARN");
+    return { skipped: true };
+  }
+
+  recentScheduleSends.set(key, now);
+  try {
+    await send();
+    return { skipped: false };
+  } catch (err) {
+    recentScheduleSends.delete(key);
+    throw err;
+  }
+}
+
+function getScheduleSendDedupKey(channel, rule, data, text) {
+  const target = channel === "LINE" ? rule.lineTo : rule.emailTo;
+  return [
+    channel,
+    target || "",
+    data.robotId || rule.robotId || "",
+    data.date || formatDate(new Date()),
+    rule.time || "",
+    hashText(text)
+  ].join("|");
+}
+
+function hashText(text) {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return String(hash);
+}
+
+async function sendLineMessage(rule, text, options = {}) {
   const response = await fetch("/api/line", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -540,7 +514,8 @@ async function sendLineMessage(rule, text) {
       channelId: rule.lineChannelId,
       channelSecret: rule.lineChannelSecret,
       to: rule.lineTo,
-      text
+      text,
+      dedupeKey: options.dedupeKey
     })
   });
   const payload = await response.json();
@@ -548,7 +523,8 @@ async function sendLineMessage(rule, text) {
 }
 
 async function sendScheduleEmail(rule, data) {
-  return sendEmailMessage(rule, "每日 AMR 統計", buildNotificationBody(data, rule));
+  const text = buildNotificationBody(data, rule);
+  return sendScheduleMessageOnce("Email", rule, data, text, () => sendEmailMessage(rule, "每日 AMR 統計", text));
 }
 
 async function sendEmailMessage(rule, subject, text) {
@@ -594,14 +570,6 @@ function buildNotificationBody(data, rule = defaultRule()) {
     `累計里程：${formatKmNumber(data.machineTotalMileage, data.mileageUnit, data.machineTotalMileageKm)} km`,
     `當日任務里程：${formatKmNumber(data.totalMileage, data.mileageUnit, data.totalMileageKm)} km`
   ].filter((line) => line !== null).join("\n");
-}
-
-function legacyStopSchedule() {
-  scheduleEnabled = false;
-  if (scheduleTimer) {
-    clearTimeout(scheduleTimer);
-    scheduleTimer = null;
-  }
 }
 
 function getNextRun(ruleOrTime) {
@@ -706,14 +674,6 @@ function loadSettings() {
   appIdInput.value = data.appId || "";
   appSecretInput.value = data.appSecret || "";
   appCodeInput.value = data.appCode || "";
-}
-
-function legacySaveRule(message) {
-  const payload = readRuleForm();
-  localStorage.setItem(RULES_KEY, JSON.stringify(payload));
-  if (scheduleEnabled) scheduleNextRun();
-  notice.textContent = message;
-  addLog(message);
 }
 
 function initQueryDate() {
@@ -1061,10 +1021,25 @@ function getRules() {
     if (!raw) return [];
     const data = JSON.parse(raw);
     const list = Array.isArray(data) ? data : [data];
-    return list.map(normalizeRule).filter((rule) => rule.time || rule.robotId || rule.lineTo || rule.emailTo);
+    return dedupeScheduleRules(list.map(normalizeRule).filter((rule) => rule.time || rule.robotId || rule.lineTo || rule.emailTo));
   } catch {
     return [];
   }
+}
+
+function dedupeScheduleRules(rules) {
+  const seen = new Set();
+  return rules.filter((rule) => {
+    const key = [
+      rule.time || "",
+      rule.robotId || "",
+      rule.lineEnabled ? rule.lineTo || "" : "",
+      rule.emailEnabled ? rule.emailTo || "" : ""
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function getRule() {
@@ -1187,13 +1162,10 @@ function createRuleId() {
 }
 
 function persistRules(rules) {
-  localStorage.setItem(RULES_KEY, JSON.stringify(rules.map(normalizeRule)));
+  const normalizedRules = dedupeScheduleRules(rules.map(normalizeRule));
+  localStorage.setItem(RULES_KEY, JSON.stringify(normalizedRules));
   LEGACY_RULES_KEYS.forEach((key) => localStorage.removeItem(key));
-  renderScheduleRules(rules);
-}
-
-function saveRule(message) {
-  saveCurrentScheduleRule(message);
+  renderScheduleRules(normalizedRules);
 }
 
 async function addScheduleRule() {

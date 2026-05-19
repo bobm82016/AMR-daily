@@ -49,6 +49,7 @@ const LINE_TO = process.env.LINE_TO || "";
 const LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push";
 const LINE_TOKEN_URL = "https://api.line.me/oauth2/v3/token";
 const LINE_TIMEOUT_MS = Number(process.env.LINE_TIMEOUT_MS || 10000);
+const LINE_DEDUP_WINDOW_MS = Number(process.env.LINE_DEDUP_WINDOW_MS || 5 * 60 * 1000);
 const HOLIDAY_API_URL = process.env.HOLIDAY_API_URL || "https://data.ntpc.gov.tw/api/datasets/308dcd75-6434-45bc-a95f-584da4fed251/json?page=0&size=5000";
 const HOLIDAY_CACHE_TTL_MS = Number(process.env.HOLIDAY_CACHE_TTL_MS || 86400000);
 const HOLIDAY_TIMEOUT_MS = Number(process.env.HOLIDAY_TIMEOUT_MS || 10000);
@@ -63,6 +64,7 @@ const mileageInflight = new Map();
 const totalStatsCache = new Map();
 const totalStatsInflight = new Map();
 const robotExistsCache = new Map();
+const recentLinePushes = new Map();
 const robotExistsInflight = new Map();
 let holidayCache = null;
 let holidayInflight = null;
@@ -181,6 +183,7 @@ const server = http.createServer(async (req, res) => {
       const channelSecret = String(body.channelSecret || LINE_CHANNEL_SECRET).trim();
       const to = String(body.to || LINE_TO).trim();
       const text = String(body.text || "").trim();
+      const dedupeKey = String(body.dedupeKey || "").trim();
 
       if (!channelAccessToken && (!channelId || !channelSecret)) {
         return sendJson(res, 400, { error: "LINE channel access token or Channel ID/secret is required" });
@@ -188,7 +191,16 @@ const server = http.createServer(async (req, res) => {
       if (!to) return sendJson(res, 400, { error: "LINE target ID is required" });
       if (!text) return sendJson(res, 400, { error: "LINE message content is required" });
 
-      await sendLinePush({ channelAccessToken, channelId, channelSecret, to, text });
+      if (dedupeKey && isDuplicateLinePush(dedupeKey)) {
+        return sendJson(res, 200, { ok: true, skipped: true });
+      }
+
+      try {
+        await sendLinePush({ channelAccessToken, channelId, channelSecret, to, text });
+      } catch (err) {
+        if (dedupeKey) forgetLinePush(dedupeKey);
+        throw err;
+      }
       return sendJson(res, 200, { ok: true });
     }
     if (req.method === "POST" && req.url === "/api/line/webhook") {
@@ -1203,6 +1215,26 @@ async function sendLinePush({ channelAccessToken, channelId, channelSecret, to, 
   } finally {
     clearTimeout(timer);
   }
+}
+
+function isDuplicateLinePush(key) {
+  const now = Date.now();
+  for (const [entryKey, sentAt] of recentLinePushes.entries()) {
+    if (now - sentAt > LINE_DEDUP_WINDOW_MS) recentLinePushes.delete(entryKey);
+  }
+
+  const sentAt = recentLinePushes.get(key);
+  if (sentAt && now - sentAt <= LINE_DEDUP_WINDOW_MS) {
+    console.warn("Skipped duplicate LINE push.");
+    return true;
+  }
+
+  recentLinePushes.set(key, now);
+  return false;
+}
+
+function forgetLinePush(key) {
+  recentLinePushes.delete(key);
 }
 
 function rememberLineSource(event) {
